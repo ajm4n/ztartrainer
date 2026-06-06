@@ -17,6 +17,15 @@ xdg-open index.html    # Linux
 # or double-click the file
 ```
 
+## Input formats
+
+- **MIDI** — drop a `.mid` / `.midi` file.
+- **Hooktheory / scale-degree JSON** — paste the clipboard data (or drop a
+  `.json` file). Scale degrees (`sd`, e.g. `"1"`, `"3"`, `"#6"`, `"b7"`) are
+  resolved against the pasted key (`tonic` + `scale` — major, minor, and the
+  church modes are supported), `octave` shifts by octaves, and `beat`/`duration`
+  are converted to time using the BPM you set (Hooktheory clips carry no tempo).
+
 ## Features
 
 - **Drag & drop** a `.mid` / `.midi` file (or click to browse).
