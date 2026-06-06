@@ -136,6 +136,12 @@
   code{background:var(--panel2); padding:1px 6px; border-radius:5px}
   .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:10px}
   .legend i{display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; margin-right:5px}
+  .paste{margin-top:10px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px}
+  .paste summary{cursor:pointer; color:var(--muted); font-size:13px; user-select:none}
+  .paste summary:hover{color:var(--fg)}
+  .paste textarea{width:100%; min-height:90px; margin-top:10px; resize:vertical;
+    background:var(--panel2); color:var(--fg); border:1px solid var(--line); border-radius:8px;
+    padding:8px 10px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px}
 </style>
 </head>
 <body>
@@ -146,10 +152,22 @@
 
 <main>
   <div id="drop" class="drop">
-    <div><strong>Drop a .mid / .midi file here</strong> or click to browse</div>
+    <div><strong>Drop a .mid / .midi (or .json) file here</strong> or click to browse</div>
     <div class="hint">Everything runs locally in your browser — nothing is uploaded.</div>
-    <input id="file" type="file" accept=".mid,.midi,audio/midi" />
+    <input id="file" type="file" accept=".mid,.midi,audio/midi,.json,application/json" />
   </div>
+
+  <details class="paste">
+    <summary>…or paste Hooktheory / scale-degree JSON</summary>
+    <textarea id="pasteBox" placeholder='Paste your copied notes here, e.g. {"notes":[{"beat":1,"duration":1,"sd":"1","octave":0,"isRest":false}],"keys":[{"beat":1,"scale":"minor","tonic":"F"}]}'></textarea>
+    <div class="row" style="margin-top:8px">
+      <label class="ctl">Tempo
+        <input id="pasteBpm" type="number" min="20" max="300" value="120" style="width:70px"> BPM
+      </label>
+      <button id="pasteBtn" class="primary">Load pasted notes</button>
+      <span class="hint" style="font-size:12px">Scale degrees are resolved against the pasted key (tonic + scale). Hooktheory has no tempo, so set BPM here.</span>
+    </div>
+  </details>
 
   <div class="meta" id="meta" style="display:none">
     <div>File: <b id="m-name">—</b></div>
@@ -398,7 +416,7 @@ const els = {};
 ["drop","file","meta","m-name","m-notes","m-steps","m-dur","m-tracks","m-tempo",
  "controls","playBtn","prevBtn","nextBtn","restartBtn","speed","speedVal","stepMode",
  "metronome","soundOn","progressWrap","progress","boardWrap","board","stepStrip",
- "tuning","frets","transpose","presetStd","showNames"].forEach(id=>{
+ "tuning","frets","transpose","presetStd","showNames","pasteBox","pasteBpm","pasteBtn"].forEach(id=>{
   els[id.replace(/-/g,"_")] = document.getElementById(id);
 });
 
@@ -595,12 +613,7 @@ function togglePlay(){
 function restart(){ stop(); State.stepIdx=-1; clearBoard(); markStepStrip(); els.progress.style.width="0%"; }
 
 /* ---------------- File loading ---------------- */
-function loadArrayBuffer(buf, name){
-  let song;
-  try { song = parseMidi(buf); }
-  catch(err){ alert("Could not parse MIDI file:\n"+err.message); return; }
-  if(!song.notes.length){ alert("No notes found in this MIDI file."); return; }
-
+function applySong(song, name){
   State.song = song;
   State.steps = buildSteps(song.notes);
   State.stepIdx = -1;
@@ -610,7 +623,7 @@ function loadArrayBuffer(buf, name){
   els.m_steps.textContent = State.steps.length;
   els.m_dur.textContent = fmtTime(song.duration);
   els.m_tracks.textContent = song.trackCount;
-  els.m_tempo.textContent = song.bpm+" BPM";
+  els.m_tempo.textContent = song.bpm + " BPM" + (song.keyName ? " · "+song.keyName : "");
 
   els.meta.style.display="flex";
   els.controls.style.display="flex";
@@ -622,11 +635,78 @@ function loadArrayBuffer(buf, name){
   renderStepStrip();
   clearBoard();
 }
+
+function loadArrayBuffer(buf, name){
+  let song;
+  try { song = parseMidi(buf); }
+  catch(err){ alert("Could not parse MIDI file:\n"+err.message); return; }
+  if(!song.notes.length){ alert("No notes found in this MIDI file."); return; }
+  applySong(song, name);
+}
+
+/* ----- Hooktheory / scale-degree clipboard ----- */
+const PITCH_CLASS = {C:0,"C#":1,DB:1,D:2,"D#":3,EB:3,E:4,FB:4,"E#":5,F:5,"F#":6,GB:6,G:7,"G#":8,AB:8,A:9,"A#":10,BB:10,B:11,CB:11,"B#":0};
+const SCALES = {
+  major:[0,2,4,5,7,9,11], ionian:[0,2,4,5,7,9,11],
+  minor:[0,2,3,5,7,8,10], aeolian:[0,2,3,5,7,8,10],
+  dorian:[0,2,3,5,7,9,10], phrygian:[0,1,3,5,7,8,10],
+  lydian:[0,2,4,6,7,9,11], mixolydian:[0,2,4,5,7,9,10],
+  locrian:[0,1,3,5,6,8,10]
+};
+function tonicPC(t){ return PITCH_CLASS[String(t||"C").toUpperCase()] ?? 0; }
+function degreeToMidi(sd, octave, baseMidi, scaleArr){
+  // sd like "1", "3", "#6", "b7"
+  const m = String(sd).match(/^([#b]*)(\d+)$/);
+  if(!m) return null;
+  const acc = (m[1].match(/#/g)||[]).length - (m[1].match(/b/g)||[]).length;
+  const degIdx = (parseInt(m[2],10) - 1) % 7;
+  return baseMidi + scaleArr[degIdx] + acc + 12*(octave||0);
+}
+function parseHooktheory(text, bpm){
+  let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("That isn't valid JSON."); }
+  const payload = data.modern && data.modern.payload;
+  const notesIn = data.notes || (payload && payload.notes);
+  if(!Array.isArray(notesIn) || !notesIn.length) throw new Error("No \"notes\" array found in the pasted data.");
+  const keys = data.keys || (payload && payload.keys) || [{tonic:"C",scale:"major"}];
+  const key = keys[0] || {tonic:"C",scale:"major"};
+  const scaleArr = SCALES[String(key.scale||"major").toLowerCase()] || SCALES.major;
+  const baseMidi = 60 + tonicPC(key.tonic);           // tonic, octave 0 ≈ C4 register
+  const spb = 60 / (bpm||120);                          // seconds per beat
+  const TPB = 480;                                      // ticks per beat (Hooktheory)
+
+  const notes = [];
+  for(const n of notesIn){
+    if(n.isRest) continue;
+    const beat = (n.beat != null) ? n.beat : (n.startTick/TPB + 1);
+    const durBeats = (n.duration != null) ? n.duration : (n.durationTicks/TPB);
+    const midi = degreeToMidi(n.sd, n.octave, baseMidi, scaleArr);
+    if(midi == null) continue;
+    const start = (beat - 1) * spb;
+    notes.push({note: midi, start, end: start + Math.max(0.05, durBeats*spb)});
+  }
+  if(!notes.length) throw new Error("No playable notes (all rests or unrecognized degrees).");
+  notes.sort((a,b)=> a.start-b.start || a.note-b.note);
+  const duration = Math.max(...notes.map(n=>n.end));
+  const keyName = (key.tonic||"C") + " " + (key.scale||"major");
+  return {format:"hooktheory", notes, duration, trackCount:1, bpm:(bpm||120), keyName};
+}
+function loadHooktheory(text, bpm, name){
+  let song;
+  try { song = parseHooktheory(text, bpm); }
+  catch(err){ alert("Could not read pasted notes:\n"+err.message); return; }
+  applySong(song, name || "Pasted notes ("+song.keyName+")");
+}
+
 function loadFile(file){
   if(!file) return;
   const r = new FileReader();
-  r.onload = e=> loadArrayBuffer(e.target.result, file.name);
-  r.readAsArrayBuffer(file);
+  if(/\.json$/i.test(file.name)){
+    r.onload = e=> loadHooktheory(e.target.result, parseFloat(els.pasteBpm.value)||120, file.name);
+    r.readAsText(file);
+  } else {
+    r.onload = e=> loadArrayBuffer(e.target.result, file.name);
+    r.readAsArrayBuffer(file);
+  }
 }
 
 /* ---------------- Tuning UI ---------------- */
@@ -649,6 +729,11 @@ function renderTuningUI(){
 /* ---------------- Events ---------------- */
 els.drop.onclick=()=> els.file.click();
 els.file.onchange=e=> loadFile(e.target.files[0]);
+els.pasteBtn.onclick=()=>{
+  const txt=els.pasteBox.value.trim();
+  if(!txt){ alert("Paste some JSON first."); return; }
+  loadHooktheory(txt, parseFloat(els.pasteBpm.value)||120);
+};
 ["dragenter","dragover"].forEach(ev=> els.drop.addEventListener(ev,e=>{e.preventDefault(); els.drop.classList.add("drag");}));
 ["dragleave","drop"].forEach(ev=> els.drop.addEventListener(ev,e=>{e.preventDefault(); els.drop.classList.remove("drag");}));
 els.drop.addEventListener("drop", e=>{ const f=e.dataTransfer.files[0]; loadFile(f); });
