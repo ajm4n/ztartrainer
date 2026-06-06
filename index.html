@@ -450,8 +450,8 @@ function renderBoard(){
   }
   tbl.appendChild(head);
 
-  // rows = strings: display high string on top (reverse of low->high array)
-  for(let s=tun.length-1; s>=0; s--){
+  // rows = strings: low string (E) on top, high string on the bottom
+  for(let s=0; s<tun.length; s++){
     const tr = document.createElement("tr");
     const lbl = document.createElement("td");
     lbl.className="strLbl";
