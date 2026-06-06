@@ -192,6 +192,7 @@
     <label class="ctl"><input id="stepMode" type="checkbox"> Step mode (wait at each note)</label>
     <label class="ctl"><input id="metronome" type="checkbox"> Click on each step</label>
     <label class="ctl"><input id="soundOn" type="checkbox" checked> Sound</label>
+    <label class="ctl"><input id="oneKey" type="checkbox" checked> Single key per note (hide duplicates)</label>
   </div>
 
   <div class="progress" id="progressWrap" style="display:none"><i id="progress"></i></div>
@@ -415,7 +416,7 @@ const STD_TUNING = [40,45,50,55,59,64];
 const els = {};
 ["drop","file","meta","m-name","m-notes","m-steps","m-dur","m-tracks","m-tempo",
  "controls","playBtn","prevBtn","nextBtn","restartBtn","speed","speedVal","stepMode",
- "metronome","soundOn","progressWrap","progress","boardWrap","board","stepStrip",
+ "metronome","soundOn","oneKey","progressWrap","progress","boardWrap","board","stepStrip",
  "tuning","frets","transpose","presetStd","showNames","pasteBox","pasteBpm","pasteBtn"].forEach(id=>{
   els[id.replace(/-/g,"_")] = document.getElementById(id);
 });
@@ -514,11 +515,12 @@ function showStep(idx, withHit=false){
   const step = State.steps[idx];
   if(!step) return;
   // assign a suggested fingering, avoiding two notes on the same string
+  const showDupes = !els.oneKey.checked;          // hide alternate positions for a piano-like 1:1 view
   const usedStrings = new Set();
   const sortedNotes = step.notes.slice().sort((a,b)=>a.note-b.note);
   for(const n of sortedNotes){
     const cells = positionsFor(n.note);
-    cells.forEach(c=> { if(!c.classList.contains("hit")&&!c.classList.contains("rec")) c.classList.add("candidate"); });
+    if(showDupes) cells.forEach(c=> { if(!c.classList.contains("hit")&&!c.classList.contains("rec")) c.classList.add("candidate"); });
     // pick a suggested key that doesn't reuse a string already taken in this chord
     let pick = cells.filter(c=> !usedStrings.has(c.dataset.string));
     pick = suggestPosition(pick.length?pick:cells);
@@ -750,6 +752,7 @@ els.frets.onchange=()=>{ State.frets=Math.max(12,Math.min(24,+els.frets.value||2
 els.transpose.onchange=()=>{ State.transpose=+els.transpose.value||0; if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.presetStd.onclick=()=>{ State.tuning=STD_TUNING.slice(); renderTuningUI(); if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.showNames.onclick=()=>{ State.showNames=!State.showNames; els.board.classList.toggle("names", State.showNames); };
+els.oneKey.onchange=()=>{ if(State.stepIdx>=0) showStep(State.stepIdx, true); };
 
 document.addEventListener("keydown", e=>{
   if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
