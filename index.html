@@ -219,6 +219,7 @@
         <label class="ctl">Transpose
           <input id="transpose" type="number" min="-24" max="24" value="0" style="width:64px"> semitones
         </label>
+        <button id="presetZ6">Z6 default (1 oct ↓)</button>
         <button id="presetStd">Standard EADGBE</button>
         <button id="showNames">Toggle note names</button>
       </div>
@@ -407,17 +408,18 @@ function playClick(){
 /* ---------------- State ---------------- */
 const State = {
   song:null, steps:[], stepIdx:-1,
-  tuning:[40,45,50,55,59,64], // low E..high E (MIDI)
+  tuning:[28,33,38,43,47,52], // Z6 default: standard guitar one octave down (E1 A1 D2 G2 B2 E3)
   frets:24, transpose:0, showNames:false,
   playing:false, startClock:0, startSongTime:0, raf:0,
 };
-const STD_TUNING = [40,45,50,55,59,64];
+const STD_TUNING = [40,45,50,55,59,64];        // standard concert guitar E A D G B E
+const Z6_TUNING  = [28,33,38,43,47,52];        // standard, one octave down (matches the Z6)
 
 const els = {};
 ["drop","file","meta","m-name","m-notes","m-steps","m-dur","m-tracks","m-tempo",
  "controls","playBtn","prevBtn","nextBtn","restartBtn","speed","speedVal","stepMode",
  "metronome","soundOn","oneKey","progressWrap","progress","boardWrap","board","stepStrip",
- "tuning","frets","transpose","presetStd","showNames","pasteBox","pasteBpm","pasteBtn"].forEach(id=>{
+ "tuning","frets","transpose","presetStd","presetZ6","showNames","pasteBox","pasteBpm","pasteBtn"].forEach(id=>{
   els[id.replace(/-/g,"_")] = document.getElementById(id);
 });
 
@@ -751,6 +753,7 @@ els.speed.oninput=()=>{ els.speedVal.textContent=getSpeed().toFixed(2)+"×"; if(
 els.frets.onchange=()=>{ State.frets=Math.max(12,Math.min(24,+els.frets.value||24)); els.frets.value=State.frets; if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.transpose.onchange=()=>{ State.transpose=+els.transpose.value||0; if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.presetStd.onclick=()=>{ State.tuning=STD_TUNING.slice(); renderTuningUI(); if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
+els.presetZ6.onclick=()=>{ State.tuning=Z6_TUNING.slice(); renderTuningUI(); if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.showNames.onclick=()=>{ State.showNames=!State.showNames; els.board.classList.toggle("names", State.showNames); };
 els.oneKey.onchange=()=>{ if(State.stepIdx>=0) showStep(State.stepIdx, true); };
 
