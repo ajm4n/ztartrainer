@@ -1,8 +1,9 @@
 # Ztar Z6 MIDI Trainer
 
 A single-file web app for learning songs on a **Starr Labs Ztar Z6**. Drop in a
-MIDI file and it shows the notes on a Ztar/guitar fretboard and plays them back
-so you can follow along, step note-by-note, and control the speed.
+MIDI file and it lights up the notes on a Z6-style **key matrix** (the 6×24 grid
+of fret buttons) and plays them back so you can follow along, step note-by-note,
+and control the speed.
 
 ## Use it
 
@@ -19,11 +20,12 @@ xdg-open index.html    # Linux
 ## Features
 
 - **Drag & drop** a `.mid` / `.midi` file (or click to browse).
-- **Fretboard view** of a 6×24 Ztar neck:
-  - 🟢 green = the note(s) playing right now
-  - 🟠 orange = a suggested place to play each pitch (lowest practical fret;
+- **Z6 key matrix** — a 6×24 grid of individual fret buttons (like the real
+  neck) that light up:
+  - 🟢 green = the key(s) playing right now
+  - 🟠 orange = a suggested key to play each pitch (lowest practical fret;
     chords are spread across strings)
-  - ⚫ grey = every other string/fret on the Z6 that produces the same pitch
+  - 🔵 blue = every other key on the Z6 that produces the same pitch
 - **Play / Pause** continuous playback with a built-in synth.
 - **Step mode** — advance one note/chord at a time with **Next / Prev**
   (or the ◀ ▶ arrow keys) so you can learn at your own pace. **Space** toggles play.

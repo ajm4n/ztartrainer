@@ -70,40 +70,50 @@
   .meta{display:flex; gap:22px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:12px}
   .meta b{color:var(--fg); font-weight:600}
 
-  /* Fretboard */
+  /* Ztar Z6 key matrix */
   .board-wrap{margin-top:18px; overflow-x:auto}
   .board{
-    --fretW:46px; --rowH:42px; --gut:64px;
-    display:inline-block; background:linear-gradient(180deg,#241b12,#1a130c);
-    border:1px solid #3a2c1c; border-radius:10px; padding:10px 10px 6px;
-    box-shadow:var(--shadow); min-width:100%;
+    --fretW:44px; --rowH:40px; --gut:58px; --gap:5px;
+    display:inline-block; background:linear-gradient(180deg,#202329,#0d0e12);
+    border:1px solid #000; border-radius:12px; padding:10px 12px 8px;
+    box-shadow:var(--shadow), inset 0 0 0 1px rgba(255,255,255,.03); min-width:100%; position:relative;
   }
-  .board table{border-collapse:collapse}
+  .brand{
+    position:absolute; top:6px; right:14px; font-size:10px; letter-spacing:.22em;
+    color:#5a6270; font-weight:700; text-transform:uppercase;
+  }
+  .board table{border-collapse:separate; border-spacing:var(--gap)}
   .board th, .board td{padding:0; margin:0}
   .strLbl{
     width:var(--gut); height:var(--rowH); text-align:right; padding-right:10px;
     color:var(--muted); font-size:12px; white-space:nowrap;
   }
   .strLbl b{color:var(--fg)}
-  .fretNum{height:22px; text-align:center; color:var(--muted); font-size:11px}
-  .nut{width:8px; background:#e9e2d2}
-  .cell{
-    width:var(--fretW); height:var(--rowH); position:relative;
-    border-right:2px solid #6b5638; /* fret wire */
-    background:linear-gradient(180deg,rgba(255,255,255,.015),rgba(0,0,0,.06));
+  .fretNum{height:18px; text-align:center; color:#727b8a; font-size:10px; font-weight:600}
+  /* each fret position is a physical key/button on the Z6 neck */
+  .key{
+    width:var(--fretW); height:var(--rowH); border-radius:6px; position:relative;
+    background:linear-gradient(180deg,#3a3f49,#191b21);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08), inset 0 -3px 5px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.6);
+    transition:background .06s, box-shadow .06s;
   }
-  .cell .string{position:absolute; left:0; right:0; top:50%; height:2px; transform:translateY(-50%);
-    background:#9a866a; opacity:.55}
-  .cell .dot{
-    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-    font-size:10px; font-weight:700; color:#04121b; opacity:0; transition:.06s; pointer-events:none;
+  .key .lbl{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; color:transparent; user-select:none;
   }
-  .cell.candidate .dot{opacity:1; background:var(--candidate); color:#cdd7e6; box-shadow:0 0 0 1px #4a5872 inset}
-  .cell.rec .dot{opacity:1; background:var(--rec); color:#1a0a04; box-shadow:0 0 10px var(--rec)}
-  .cell.hit .dot{opacity:1; background:var(--hit); color:#03150d; box-shadow:0 0 14px var(--hit); transform:translate(-50%,-50%) scale(1.12)}
-  .inlay{position:absolute; left:50%; bottom:3px; transform:translateX(-50%); width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.18)}
-  .inlay.dbl{box-shadow:14px 0 rgba(255,255,255,.18), -14px 0 rgba(255,255,255,.18)}
+  /* note names revealed when toggled */
+  .board.names .key .lbl{color:#69727f}
+  /* lit states (LED-style) */
+  .key.candidate{background:linear-gradient(180deg,#48586f,#28324a); box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 0 6px rgba(74,88,114,.6)}
+  .key.candidate .lbl{color:#d3dcec}
+  .key.rec{background:linear-gradient(180deg,#ff9b7d,#ff7048); box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 0 14px var(--rec)}
+  .key.rec .lbl{color:#2a0d04}
+  .key.hit{background:linear-gradient(180deg,#67f3b6,#2ecf94); box-shadow:inset 0 1px 0 rgba(255,255,255,.45), 0 0 18px var(--hit)}
+  .key.hit .lbl{color:#03150d}
+  /* fret position markers (inlays) shown beneath the matrix */
+  .inlayCell{height:14px; text-align:center}
+  .inlay{display:inline-block; width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.22); margin-top:3px}
+  .inlay.dbl{box-shadow:9px 0 rgba(255,255,255,.22), -9px 0 rgba(255,255,255,.22)}
 
   /* Steps / upcoming */
   .steps{display:flex; gap:8px; overflow-x:auto; padding:6px 2px; margin-top:14px}
@@ -131,7 +141,7 @@
 <body>
 <header>
   <h1>🎸 Ztar Z6 MIDI Trainer</h1>
-  <span class="sub">Drop a MIDI file → see it on the fretboard → step through &amp; learn</span>
+  <span class="sub">Drop a MIDI file → see it on the Z6 key matrix → step through &amp; learn</span>
 </header>
 
 <main>
@@ -403,7 +413,7 @@ function renderBoard(){
 
   // fret number header
   const head = document.createElement("tr");
-  head.innerHTML = `<th class="strLbl"></th><th class="nut"></th>`;
+  head.innerHTML = `<th class="strLbl"></th>`;
   for(let f=1; f<=F; f++){
     const th = document.createElement("th");
     th.className="fretNum"; th.textContent=f;
@@ -411,7 +421,7 @@ function renderBoard(){
   }
   tbl.appendChild(head);
 
-  // strings: display high string on top (reverse of low->high array)
+  // rows = strings: display high string on top (reverse of low->high array)
   for(let s=tun.length-1; s>=0; s--){
     const tr = document.createElement("tr");
     const lbl = document.createElement("td");
@@ -419,46 +429,39 @@ function renderBoard(){
     lbl.innerHTML = `<b>${midiToName(tun[s]).replace(/[0-9-]/g,"")}</b> <span style="opacity:.6">${midiToName(tun[s])}</span>`;
     tr.appendChild(lbl);
 
-    const nut = document.createElement("td"); nut.className="nut"; tr.appendChild(nut);
-
     for(let f=1; f<=F; f++){
       const td = document.createElement("td");
-      td.className="cell";
-      td.dataset.string=s; td.dataset.fret=f;
-      td.dataset.midi = tun[s] + f; // fret 1 = +1 semitone from open
-      const stringEl = document.createElement("div"); stringEl.className="string"; td.appendChild(stringEl);
-      const dot = document.createElement("div"); dot.className="dot"; td.appendChild(dot);
+      const key = document.createElement("div");
+      key.className="key cell";            // each fret position is a Z6 key
+      key.dataset.string=s; key.dataset.fret=f;
+      const midi = tun[s] + f;             // fret 1 = +1 semitone from open
+      key.dataset.midi = midi;
+      const lblEl = document.createElement("span");
+      lblEl.className="lbl";
+      lblEl.textContent = midiToName(midi).replace(/[0-9-]/g,""); // permanent note label
+      key.appendChild(lblEl);
+      td.appendChild(key);
       tr.appendChild(td);
     }
     tbl.appendChild(tr);
   }
 
-  // inlay row (fret markers) under board
+  // inlay row (fret position markers) under the matrix
   const markRow = document.createElement("tr");
-  markRow.innerHTML = `<td></td><td></td>`;
+  markRow.innerHTML = `<td></td>`;
   for(let f=1; f<=F; f++){
-    const td=document.createElement("td");
-    if(INLAYS[f]){ const i=document.createElement("div"); i.className="inlay"+(INLAYS[f]===2?" dbl":""); i.style.position="static"; i.style.margin="3px auto 0"; td.style.textAlign="center"; td.appendChild(i);}
+    const td=document.createElement("td"); td.className="inlayCell";
+    if(INLAYS[f]){ const i=document.createElement("div"); i.className="inlay"+(INLAYS[f]===2?" dbl":""); td.appendChild(i); }
     markRow.appendChild(td);
   }
   tbl.appendChild(markRow);
 
-  els.board.innerHTML="";
+  els.board.innerHTML='<span class="brand">Starr Labs · Ztar Z6</span>';
   els.board.appendChild(tbl);
-  refreshNoteNames();
+  els.board.classList.toggle("names", State.showNames);
 }
 
-function refreshNoteNames(){
-  if(!State.showNames){ els.board.querySelectorAll(".cell .dot").forEach(d=>{ if(!d.closest(".cell").classList.contains("hit")&&!d.closest(".cell").classList.contains("rec")&&!d.closest(".cell").classList.contains("candidate")) d.textContent=""; }); return; }
-  els.board.querySelectorAll(".cell").forEach(c=>{
-    const dot=c.querySelector(".dot");
-    if(!c.classList.contains("hit")&&!c.classList.contains("rec")&&!c.classList.contains("candidate")){
-      // leave blank when names mode off-target; names shown on active dots
-    }
-  });
-}
-
-/* find all (cell) positions for a pitch */
+/* find all key positions for a pitch */
 function positionsFor(midi){
   return Array.from(els.board.querySelectorAll(`.cell[data-midi="${midi}"]`));
 }
@@ -474,38 +477,28 @@ function suggestPosition(cells){
 }
 
 function clearBoard(){
-  els.board.querySelectorAll(".cell").forEach(c=>{
-    c.classList.remove("hit","rec","candidate");
-    const d=c.querySelector(".dot"); d.textContent="";
-  });
+  els.board.querySelectorAll(".cell").forEach(c=> c.classList.remove("hit","rec","candidate"));
 }
 
-/* highlight a step's notes: hit on suggested, candidate on others */
+/* highlight a step's notes: hit/rec on suggested key, candidate on the others */
 function showStep(idx, withHit=false){
   clearBoard();
   const step = State.steps[idx];
   if(!step) return;
-  // group suggested fingering avoiding two notes on same string
+  // assign a suggested fingering, avoiding two notes on the same string
   const usedStrings = new Set();
   const sortedNotes = step.notes.slice().sort((a,b)=>a.note-b.note);
   for(const n of sortedNotes){
     const cells = positionsFor(n.note);
     cells.forEach(c=> { if(!c.classList.contains("hit")&&!c.classList.contains("rec")) c.classList.add("candidate"); });
-    // pick suggested that doesn't reuse a string already taken in this chord
+    // pick a suggested key that doesn't reuse a string already taken in this chord
     let pick = cells.filter(c=> !usedStrings.has(c.dataset.string));
     pick = suggestPosition(pick.length?pick:cells);
     if(pick){
       usedStrings.add(pick.dataset.string);
       pick.classList.remove("candidate");
       pick.classList.add(withHit?"hit":"rec");
-      pick.querySelector(".dot").textContent = midiToName(n.note).replace(/[0-9]/g,"");
     }
-  }
-  // label candidates with names if requested
-  if(State.showNames){
-    els.board.querySelectorAll(".cell.candidate .dot").forEach(d=>{
-      d.textContent = midiToName(+d.closest(".cell").dataset.midi).replace(/[0-9]/g,"");
-    });
   }
 }
 
@@ -661,7 +654,7 @@ els.speed.oninput=()=>{ els.speedVal.textContent=getSpeed().toFixed(2)+"×"; if(
 els.frets.onchange=()=>{ State.frets=Math.max(12,Math.min(24,+els.frets.value||24)); els.frets.value=State.frets; if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.transpose.onchange=()=>{ State.transpose=+els.transpose.value||0; if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.presetStd.onclick=()=>{ State.tuning=STD_TUNING.slice(); renderTuningUI(); if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
-els.showNames.onclick=()=>{ State.showNames=!State.showNames; if(State.stepIdx>=0) showStep(State.stepIdx, !State.playing?false:true); };
+els.showNames.onclick=()=>{ State.showNames=!State.showNames; els.board.classList.toggle("names", State.showNames); };
 
 document.addEventListener("keydown", e=>{
   if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
