@@ -73,7 +73,7 @@
   /* Ztar Z6 key matrix */
   .board-wrap{margin-top:18px; overflow-x:auto}
   .board{
-    --rowH:52px; --gut:58px; --gap:5px;
+    --rowH:62px; --gut:58px; --gap:5px;
     display:inline-block; background:linear-gradient(180deg,#202329,#0d0e12);
     border:1px solid #000; border-radius:12px; padding:10px 12px 8px;
     box-shadow:var(--shadow), inset 0 0 0 1px rgba(255,255,255,.03); min-width:100%; position:relative;
@@ -412,21 +412,14 @@ function renderBoard(){
   const tbl = document.createElement("table");
   tbl.style.tableLayout = "fixed";
 
-  // Real fretboard geometry: distance from nut to fret n = scale*(1 - 2^(-n/12)),
-  // so each fret gets progressively narrower toward the body (1:1 with a real neck).
-  const SCALE = 1180;                       // reference nut->bridge length in px
-  const GUT = 58, GAP = 5;                  // gutter + border-spacing (match CSS vars)
-  const pos = f => SCALE * (1 - Math.pow(2, -f/12));
-  const widths = [];
-  for(let f=1; f<=F; f++) widths.push(Math.max(15, pos(f) - pos(f-1)));
-
-  // colgroup fixes each fret's width
+  // The Z6 is an electronic key matrix, not a vibrating-string scale: every fret
+  // key is the same size (uniform grid of long, narrow buttons).
+  const KEYW = 34, GUT = 58, GAP = 5;       // key width + gutter + spacing (match CSS)
   const cg = document.createElement("colgroup");
   const c0 = document.createElement("col"); c0.style.width = GUT+"px"; cg.appendChild(c0);
-  widths.forEach(w=>{ const c=document.createElement("col"); c.style.width = w.toFixed(1)+"px"; cg.appendChild(c); });
+  for(let f=1; f<=F; f++){ const c=document.createElement("col"); c.style.width = KEYW+"px"; cg.appendChild(c); }
   tbl.appendChild(cg);
-  const totalW = GUT + widths.reduce((a,b)=>a+b,0) + (F+1)*GAP;
-  tbl.style.width = totalW.toFixed(0)+"px";
+  tbl.style.width = (GUT + F*KEYW + (F+1)*GAP)+"px";
 
   // fret number header
   const head = document.createElement("tr");
