@@ -73,7 +73,7 @@
   /* Ztar Z6 key matrix */
   .board-wrap{margin-top:18px; overflow-x:auto}
   .board{
-    --rowH:62px; --gut:58px; --gap:5px;
+    --rowH:26px; --gut:58px; --gap:3px;
     display:inline-block; background:linear-gradient(180deg,#202329,#0d0e12);
     border:1px solid #000; border-radius:12px; padding:10px 12px 8px;
     box-shadow:var(--shadow), inset 0 0 0 1px rgba(255,255,255,.03); min-width:100%; position:relative;
@@ -90,13 +90,15 @@
   }
   .strLbl b{color:var(--fg)}
   .fretNum{height:18px; text-align:center; color:#727b8a; font-size:10px; font-weight:600; overflow:hidden}
-  /* each fret position is a physical key/button on the Z6 neck */
+  /* each fret position is a physical key on the Z6 neck:
+     a long, narrow bar — long along the neck, narrow across it */
   .key{
-    width:100%; height:var(--rowH); border-radius:6px; position:relative;
+    width:100%; height:var(--rowH); border-radius:5px; position:relative; cursor:pointer;
     background:linear-gradient(180deg,#3a3f49,#191b21);
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.08), inset 0 -3px 5px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.6);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08), inset 0 -2px 4px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.6);
     transition:background .06s, box-shadow .06s;
   }
+  .key:active{filter:brightness(1.3)}
   .key .lbl{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     font-size:10px; font-weight:700; color:transparent; user-select:none; overflow:hidden;
@@ -108,8 +110,8 @@
   .key.candidate .lbl{color:#d3dcec}
   .key.rec{background:linear-gradient(180deg,#ff9b7d,#ff7048); box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 0 14px var(--rec)}
   .key.rec .lbl{color:#2a0d04}
-  .key.hit{background:linear-gradient(180deg,#67f3b6,#2ecf94); box-shadow:inset 0 1px 0 rgba(255,255,255,.45), 0 0 18px var(--hit)}
-  .key.hit .lbl{color:#03150d}
+  .key.hit, .key.pressed{background:linear-gradient(180deg,#67f3b6,#2ecf94); box-shadow:inset 0 1px 0 rgba(255,255,255,.45), 0 0 18px var(--hit)}
+  .key.hit .lbl, .key.pressed .lbl{color:#03150d}
   /* fret position markers (inlays) shown beneath the matrix */
   .inlayCell{height:14px; text-align:center}
   .inlay{display:inline-block; width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.22); margin-top:3px}
@@ -282,15 +284,17 @@ function parseMidi(buf){
       if(b & 0x80){ status = b; p++; } // new status
       // else running status, keep previous
       const hi = status & 0xf0;
-      if(status === 0xff){ // meta
+      if(status === 0xff){ // meta (cancels running status)
         const type = rd8();
         const l = vlq();
         if(type === 0x51 && l === 3){
           const uspq = (rd8()<<16)|(rd8()<<8)|rd8();
           tempos.push({tick, uspq});
         } else { p += l; }
-      } else if(status === 0xf0 || status === 0xf7){ // sysex
+        status = 0;
+      } else if(status === 0xf0 || status === 0xf7){ // sysex (cancels running status)
         const l = vlq(); p += l;
+        status = 0;
       } else if(hi === 0x90){ // note on
         const note = rd8(), vel = rd8();
         events.push({tick, type: vel>0?"on":"off", note, vel});
@@ -410,7 +414,7 @@ const State = {
   song:null, steps:[], stepIdx:-1,
   tuning:[28,33,38,43,47,52], // Z6 default: standard guitar one octave down (E1 A1 D2 G2 B2 E3)
   frets:24, transpose:0, showNames:false,
-  playing:false, startClock:0, startSongTime:0, raf:0,
+  playing:false, startClock:0, startSongTime:0, raf:0, speed:1,
 };
 const STD_TUNING = [40,45,50,55,59,64];        // standard concert guitar E A D G B E
 const Z6_TUNING  = [28,33,38,43,47,52];        // standard, one octave down (matches the Z6)
@@ -435,7 +439,7 @@ function renderBoard(){
 
   // The Z6 is an electronic key matrix, not a vibrating-string scale: every fret
   // key is the same size (uniform grid of long, narrow buttons).
-  const KEYW = 34, GUT = 58, GAP = 5;       // key width + gutter + spacing (match CSS)
+  const KEYW = 56, GUT = 58, GAP = 3;       // key width + gutter + spacing (match CSS)
   const cg = document.createElement("colgroup");
   const c0 = document.createElement("col"); c0.style.width = GUT+"px"; cg.appendChild(c0);
   for(let f=1; f<=F; f++){ const c=document.createElement("col"); c.style.width = KEYW+"px"; cg.appendChild(c); }
@@ -599,7 +603,10 @@ function play(){
     return;
   }
   ensureAudio();
+  // if the song already finished, start over instead of replaying the last note
+  if(State.stepIdx >= State.steps.length-1) State.stepIdx = -1;
   State.playing=true;
+  State.speed = getSpeed();
   els.playBtn.textContent="⏸ Pause";
   State.startClock = audioCtx.currentTime;
   State.startSongTime = (State.stepIdx>=0 && State.stepIdx<State.steps.length) ? State.steps[State.stepIdx].start : 0;
@@ -618,11 +625,21 @@ function restart(){ stop(); State.stepIdx=-1; clearBoard(); markStepStrip(); els
 
 /* ---------------- File loading ---------------- */
 function applySong(song, name){
+  // shift the whole song by octaves so as many notes as possible fit the board
+  const tun = effTuning();
+  const lo = Math.min(...tun)+1, hi = Math.max(...tun)+State.frets;
+  let best = 0, bestCount = -1;
+  for(let k=-4; k<=4; k++){
+    const c = song.notes.reduce((a,n)=> a + ((n.note+12*k>=lo && n.note+12*k<=hi)?1:0), 0);
+    if(c>bestCount || (c===bestCount && Math.abs(k)<Math.abs(best))){ bestCount=c; best=k; }
+  }
+  if(best!==0){ song.notes.forEach(n=> n.note += 12*best); song.octaveShift = best; }
+
   State.song = song;
   State.steps = buildSteps(song.notes);
   State.stepIdx = -1;
 
-  els.m_name.textContent = name;
+  els.m_name.textContent = name + (song.octaveShift ? " (shifted "+(song.octaveShift>0?"+":"")+song.octaveShift+" oct to fit)" : "");
   els.m_notes.textContent = song.notes.length;
   els.m_steps.textContent = State.steps.length;
   els.m_dur.textContent = fmtTime(song.duration);
@@ -671,19 +688,32 @@ function parseHooktheory(text, bpm){
   const payload = data.modern && data.modern.payload;
   const notesIn = data.notes || (payload && payload.notes);
   if(!Array.isArray(notesIn) || !notesIn.length) throw new Error("No \"notes\" array found in the pasted data.");
-  const keys = data.keys || (payload && payload.keys) || [{tonic:"C",scale:"major"}];
-  const key = keys[0] || {tonic:"C",scale:"major"};
-  const scaleArr = SCALES[String(key.scale||"major").toLowerCase()] || SCALES.major;
-  const baseMidi = 60 + tonicPC(key.tonic);           // tonic, octave 0 ≈ C4 register
-  const spb = 60 / (bpm||120);                          // seconds per beat
   const TPB = 480;                                      // ticks per beat (Hooktheory)
+
+  // key changes: each note is resolved against the key active at its beat
+  const rawKeys = (Array.isArray(data.keys) && data.keys.length ? data.keys : (payload && payload.keys) || []);
+  const keyList = rawKeys.map(k=>({
+    beat: k.beat != null ? k.beat : (k.startTick != null ? k.startTick/TPB + 1 : 1),
+    tonic: k.tonic || "C",
+    scale: String(k.scale || "major").toLowerCase()
+  })).sort((a,b)=> a.beat-b.beat);
+  if(!keyList.length) keyList.push({beat:1, tonic:"C", scale:"major"});
+  const keyAt = beat => { let k=keyList[0]; for(const kk of keyList){ if(kk.beat <= beat+1e-9) k=kk; else break; } return k; };
+
+  // tempo embedded in the clip wins over the UI value when present
+  const tempoArr = data.tempos || (payload && payload.tempos) || [];
+  const embedded = tempoArr.length && (tempoArr[0].bpm || tempoArr[0].tempo);
+  if(embedded) bpm = +embedded;
+  const spb = 60 / (bpm||120);                          // seconds per beat
 
   const notes = [];
   for(const n of notesIn){
     if(n.isRest) continue;
     const beat = (n.beat != null) ? n.beat : (n.startTick/TPB + 1);
     const durBeats = (n.duration != null) ? n.duration : (n.durationTicks/TPB);
-    const midi = degreeToMidi(n.sd, n.octave, baseMidi, scaleArr);
+    const k = keyAt(beat);
+    const scaleArr = SCALES[k.scale] || SCALES.major;
+    const midi = degreeToMidi(n.sd, n.octave, 60 + tonicPC(k.tonic), scaleArr);
     if(midi == null) continue;
     const start = (beat - 1) * spb;
     notes.push({note: midi, start, end: start + Math.max(0.05, durBeats*spb)});
@@ -691,7 +721,7 @@ function parseHooktheory(text, bpm){
   if(!notes.length) throw new Error("No playable notes (all rests or unrecognized degrees).");
   notes.sort((a,b)=> a.start-b.start || a.note-b.note);
   const duration = Math.max(...notes.map(n=>n.end));
-  const keyName = (key.tonic||"C") + " " + (key.scale||"major");
+  const keyName = keyList[0].tonic + " " + keyList[0].scale + (keyList.length>1 ? " (+"+(keyList.length-1)+" key change"+(keyList.length>2?"s":"")+")" : "");
   return {format:"hooktheory", notes, duration, trackCount:1, bpm:(bpm||120), keyName};
 }
 function loadHooktheory(text, bpm, name){
@@ -748,7 +778,16 @@ els.playBtn.onclick=togglePlay;
 els.nextBtn.onclick=()=>{ stop(); gotoStep(State.stepIdx+1, true); };
 els.prevBtn.onclick=()=>{ stop(); gotoStep(State.stepIdx-1, true); };
 els.restartBtn.onclick=restart;
-els.speed.oninput=()=>{ els.speedVal.textContent=getSpeed().toFixed(2)+"×"; if(State.playing){ /* rebase clock */ State.startSongTime += (audioCtx.currentTime-State.startClock)*0; } };
+els.speed.oninput=()=>{
+  const ns = getSpeed();
+  els.speedVal.textContent = ns.toFixed(2)+"×";
+  if(State.playing && audioCtx){
+    // rebase the clock at the old speed so the song position doesn't jump
+    State.startSongTime += (audioCtx.currentTime - State.startClock) * State.speed;
+    State.startClock = audioCtx.currentTime;
+  }
+  State.speed = ns;
+};
 
 els.frets.onchange=()=>{ State.frets=Math.max(12,Math.min(24,+els.frets.value||24)); els.frets.value=State.frets; if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.transpose.onchange=()=>{ State.transpose=+els.transpose.value||0; if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
@@ -756,6 +795,16 @@ els.presetStd.onclick=()=>{ State.tuning=STD_TUNING.slice(); renderTuningUI(); i
 els.presetZ6.onclick=()=>{ State.tuning=Z6_TUNING.slice(); renderTuningUI(); if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.showNames.onclick=()=>{ State.showNames=!State.showNames; els.board.classList.toggle("names", State.showNames); };
 els.oneKey.onchange=()=>{ if(State.stepIdx>=0) showStep(State.stepIdx, true); };
+
+// tap any key to hear it (like pressing it on the Z6)
+els.board.addEventListener("pointerdown", e=>{
+  const k = e.target.closest(".key");
+  if(!k) return;
+  ensureAudio();
+  playTone(+k.dataset.midi, 0.5);
+  k.classList.add("pressed");
+  setTimeout(()=> k.classList.remove("pressed"), 280);
+});
 
 document.addEventListener("keydown", e=>{
   if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
@@ -765,6 +814,9 @@ document.addEventListener("keydown", e=>{
 });
 
 renderTuningUI();
+// show the neck right away so keys can be explored before loading a song
+renderBoard();
+els.boardWrap.style.display="block";
 </script>
 </body>
 </html>

@@ -1,9 +1,10 @@
 # Ztar Z6 MIDI Trainer
 
 A single-file web app for learning songs on a **Starr Labs Ztar Z6**. Drop in a
-MIDI file and it lights up the notes on a Z6-style **key matrix** (the 6×24 grid
-of fret buttons) and plays them back so you can follow along, step note-by-note,
-and control the speed.
+MIDI file (or paste Hooktheory data) and it lights up the notes on a Z6-style
+**key matrix** — 6 strings × 24 frets of long, narrow key buttons, like the real
+neck — and plays them back so you can follow along, step note-by-note, and
+control the speed.
 
 ## Use it
 
@@ -19,45 +20,52 @@ xdg-open index.html    # Linux
 
 ## Input formats
 
-- **MIDI** — drop a `.mid` / `.midi` file.
+- **MIDI** — drop a `.mid` / `.midi` file. Handles format 0/1, tempo changes,
+  and running status.
 - **Hooktheory / scale-degree JSON** — paste the clipboard data (or drop a
   `.json` file). Scale degrees (`sd`, e.g. `"1"`, `"3"`, `"#6"`, `"b7"`) are
-  resolved against the pasted key (`tonic` + `scale` — major, minor, and the
-  church modes are supported), `octave` shifts by octaves, and `beat`/`duration`
-  are converted to time using the BPM you set (Hooktheory clips carry no tempo).
+  resolved against the key active at each note's beat (`tonic` + `scale` —
+  major, minor, and the church modes; **mid-clip key changes are honored**).
+  `octave` shifts by octaves, and `beat`/`duration` are converted to time
+  using the clip's embedded tempo when present, otherwise the BPM you set.
+
+Songs whose pitches fall outside the neck's range are automatically shifted by
+whole octaves to fit (the shift is shown next to the file name).
 
 ## Features
 
-- **Drag & drop** a `.mid` / `.midi` file (or click to browse).
-- **Z6 key matrix** — a 6×24 grid of individual fret buttons (like the real
-  neck) that light up:
+- **Z6 key matrix** — 6 rows × 24 frets of individual key buttons that light up:
   - 🟢 green = the key(s) playing right now
   - 🟠 orange = a suggested key to play each pitch (lowest practical fret;
     chords are spread across strings)
   - 🔵 blue = every other key on the Z6 that produces the same pitch
-- **Play / Pause** continuous playback with a built-in synth.
+    (hidden by default via **Single key per note** for a piano-like 1:1 view)
+- **Tap any key to hear it** — the board is live even before a song is loaded.
+- **Play / Pause** continuous playback with a built-in synth; changing speed
+  mid-playback keeps the song position.
 - **Step mode** — advance one note/chord at a time with **Next / Prev**
   (or the ◀ ▶ arrow keys) so you can learn at your own pace. **Space** toggles play.
 - **Speed control** from 0.1× to 2×.
 - **Metronome click** on each step (optional).
 - **Step strip** — click any step to jump straight to it.
-- **Tuning editor** — set each string to match your Z6's actual tuning
-  (defaults to standard **E A D G B E**), plus a global transpose and a
-  selectable fret count.
+- **Tuning editor** — set each string to match your Z6. Defaults to the
+  **Z6 tuning: standard guitar intervals one octave down (E1 A1 D2 G2 B2 E3)**,
+  with one-click presets for Z6 and concert-pitch EADGBE, plus a global
+  transpose and selectable fret count. Low E is the top row.
 
 ## How pitch → fretboard mapping works
 
-Each fret cell's pitch is `openStringNote + fretNumber` (fret 1 = one semitone
-above the open string). A MIDI pitch usually exists at several string/fret
-positions; the app highlights them all and picks a low, playable suggestion.
-For chords it avoids assigning two notes to the same string.
+Each fret key's pitch is `openStringNote + fretNumber` (fret 1 = one semitone
+above the open string). A pitch usually exists at several string/fret
+positions; the app picks a low, playable suggestion (and can show all the
+alternatives). For chords it avoids assigning two notes to the same string.
 
 If positions don't line up with your instrument, edit the **Tuning** row to
 match how your Z6 is actually configured.
 
 ## Notes / limitations
 
-- Parses Standard MIDI Files (format 0 and 1) including tempo changes.
 - Playback is a simple triangle-wave synth intended for learning, not a
   realistic instrument sound.
 - SMPTE-timed MIDI files fall back to a default resolution.
+- Hooktheory chord tracks aren't rendered yet — melody notes only.
