@@ -494,47 +494,72 @@ function renderBoard(){
   els.board.innerHTML='<span class="brand">Starr Labs · Ztar Z6</span>';
   els.board.appendChild(tbl);
   els.board.classList.toggle("names", State.showNames);
+  // tuning/frets/transpose changed the geometry — refit the fingering
+  if(State.song && State.steps.length) State.fingering = computeFingering(State.steps);
 }
 
-/* find all key positions for a pitch */
+/* find all key positions for a pitch (DOM cells) */
 function positionsFor(midi){
   return Array.from(els.board.querySelectorAll(`.cell[data-midi="${midi}"]`));
 }
+/* same, but pure math: [{s,f}] for the current tuning/fret count */
+function positionsForPitch(midi){
+  const tun = effTuning(), out = [];
+  for(let s=0; s<tun.length; s++){
+    const f = midi - tun[s];
+    if(f>=1 && f<=State.frets) out.push({s, f});
+  }
+  return out;
+}
 
-/* choose suggested fingering: prefer lowest fret, tie-break toward middle strings */
-function suggestPosition(cells){
-  if(!cells.length) return null;
-  return cells.slice().sort((a,b)=>{
-    const fa=+a.dataset.fret, fb=+b.dataset.fret;
-    if(fa!==fb) return fa-fb;
-    return Math.abs(+a.dataset.string-2.5) - Math.abs(+b.dataset.string-2.5);
-  })[0];
+/* Precompute a travel-aware fingering for the whole song: each note picks the
+   position closest to the current hand position (fret moves cost more than
+   string crossings), chord notes cluster around the chord's first pick, and
+   the very first pick just prefers a low fret. */
+function computeFingering(steps){
+  let hand = null;                                  // {f,s} where the hand currently sits
+  const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
+  return steps.map(step=>{
+    const used = new Set(), picks = [];
+    // assign highest pitch first: it has the fewest possible positions, and the
+    // rest of the chord then walks down the strings into a playable shape
+    const notes = step.notes.slice().sort((a,b)=>b.note-a.note);
+    for(const n of notes){
+      let cands = positionsForPitch(n.note).filter(c=> !used.has(c.s));
+      if(!cands.length) cands = positionsForPitch(n.note);
+      if(!cands.length) continue;                   // pitch not on the board
+      const ref = picks.length ? picks[0] : hand;   // cluster chords; else follow the hand
+      let best = null, bestCost = Infinity;
+      for(const c of cands){
+        const cost = ref==null
+          ? c.f + 0.1*Math.abs(c.s-2.5)
+          : 2*Math.abs(c.f-ref.f) + 0.7*Math.abs(c.s-ref.s) + 0.02*c.f;
+        if(cost < bestCost){ bestCost = cost; best = c; }
+      }
+      used.add(best.s);
+      picks.push({s:best.s, f:best.f, note:n.note});
+    }
+    if(picks.length) hand = {f:avg(picks.map(p=>p.f)), s:avg(picks.map(p=>p.s))};
+    return picks;
+  });
 }
 
 function clearBoard(){
   els.board.querySelectorAll(".cell").forEach(c=> c.classList.remove("hit","rec","candidate"));
 }
 
-/* highlight a step's notes: hit/rec on suggested key, candidate on the others */
+/* highlight a step: hit/rec on the precomputed fingering, candidate on the rest */
 function showStep(idx, withHit=false){
   clearBoard();
   const step = State.steps[idx];
   if(!step) return;
-  // assign a suggested fingering, avoiding two notes on the same string
-  const showDupes = !els.oneKey.checked;          // hide alternate positions for a piano-like 1:1 view
-  const usedStrings = new Set();
-  const sortedNotes = step.notes.slice().sort((a,b)=>a.note-b.note);
-  for(const n of sortedNotes){
-    const cells = positionsFor(n.note);
-    if(showDupes) cells.forEach(c=> { if(!c.classList.contains("hit")&&!c.classList.contains("rec")) c.classList.add("candidate"); });
-    // pick a suggested key that doesn't reuse a string already taken in this chord
-    let pick = cells.filter(c=> !usedStrings.has(c.dataset.string));
-    pick = suggestPosition(pick.length?pick:cells);
-    if(pick){
-      usedStrings.add(pick.dataset.string);
-      pick.classList.remove("candidate");
-      pick.classList.add(withHit?"hit":"rec");
-    }
+  if(!els.oneKey.checked){                          // show alternate positions
+    for(const n of step.notes) positionsFor(n.note).forEach(c=> c.classList.add("candidate"));
+  }
+  const picks = (State.fingering && State.fingering[idx]) || [];
+  for(const p of picks){
+    const cell = els.board.querySelector(`.cell[data-string="${p.s}"][data-fret="${p.f}"]`);
+    if(cell){ cell.classList.remove("candidate"); cell.classList.add(withHit?"hit":"rec"); }
   }
 }
 
