@@ -471,8 +471,8 @@ function renderBoard(){
     const tr = document.createElement("tr");
     const lbl = document.createElement("td");
     lbl.className="strLbl";
-    lbl.innerHTML = `<b>${tun.length-s}</b> <span style="opacity:.6">${midiToName(tun[s])}</span>`;
-    lbl.title = "String "+(tun.length-s)+" — open "+midiToName(tun[s]);
+    lbl.innerHTML = `<b>${s+1}</b> <span style="opacity:.6">${midiToName(tun[s])}</span>`;
+    lbl.title = "String "+(s+1)+" — open "+midiToName(tun[s]);
     tr.appendChild(lbl);
 
     for(let f=1; f<=F; f++){
@@ -671,10 +671,9 @@ function renderStepStrip(){
   State.steps.forEach((st,i)=>{
     const d=document.createElement("div"); d.className="step"; d.dataset.i=i;
     const picks = (State.fingering && State.fingering[i]) || [];
-    const nStr = State.tuning.length;
-    const sf = picks.length ? picks.map(p=>`S${nStr-p.s}·F${p.f}`).join(" ") : "—";
+    const sf = picks.length ? picks.map(p=>`S${p.s+1}·F${p.f}`).join(" ") : "—";
     const names = st.notes.map(n=>midiToName(n.note)).join(" ");
-    d.title = "string · fret (string 1 = bottom row, highest pitch)";
+    d.title = "string · fret (string 1 = top row)";
     d.innerHTML = `<span class="nm">${sf}</span><span class="t">${names}</span><span class="t">${st.start.toFixed(2)}s</span>`;
     d.onclick=()=> gotoStep(i, true);
     els.stepStrip.appendChild(d);
