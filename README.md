@@ -36,8 +36,9 @@ whole octaves to fit (the shift is shown next to the file name).
 
 - **Z6 key matrix** — 6 rows × 24 frets of individual key buttons that light up:
   - 🟢 green = the key(s) playing right now
-  - 🟠 orange = a suggested key to play each pitch (lowest practical fret;
-    chords are spread across strings)
+  - 🟠 orange = a suggested key to play each pitch — chosen to minimize hand
+    travel (each note picks the position closest to where your hand already is;
+    chords cluster into one playable shape, one string per note)
   - 🔵 blue = every other key on the Z6 that produces the same pitch
     (hidden by default via **Single key per note** for a piano-like 1:1 view)
 - **Tap any key to hear it** — the board is live even before a song is loaded.
@@ -57,8 +58,11 @@ whole octaves to fit (the shift is shown next to the file name).
 
 Each fret key's pitch is `openStringNote + fretNumber` (fret 1 = one semitone
 above the open string). A pitch usually exists at several string/fret
-positions; the app picks a low, playable suggestion (and can show all the
-alternatives). For chords it avoids assigning two notes to the same string.
+positions; the suggested fingering is precomputed for the whole song to
+minimize hand travel — fret moves cost more than string crossings, chord
+notes cluster around one hand position (highest pitch assigned first, one
+string per note), and the first note simply prefers a low fret. All the
+alternative positions can still be shown by unchecking "Single key per note".
 
 If positions don't line up with your instrument, edit the **Tuning** row to
 match how your Z6 is actually configured.
