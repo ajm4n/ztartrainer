@@ -58,13 +58,20 @@ whole octaves to fit (the shift is shown next to the file name).
 
 Each fret key's pitch is `openStringNote + fretNumber` (fret 1 = one semitone
 above the open string). A pitch usually exists at several string/fret
-positions; the suggested fingering is precomputed for the whole song and every
-note takes the position with the **least physical finger distance** from the
-previous one, using real neck geometry (one fret of travel ≈ three string
-crossings). Chord notes cluster around one hand position (highest pitch
+positions; the suggested fingering is precomputed for the whole song using
+real neck geometry (one fret of travel ≈ three string crossings) under a
+selectable **Fingering** strategy:
+
+- **Nearest key** (default) — every note takes the position with the least
+  finger distance from the previous one.
+- **Optimal path** — a whole-song shortest-path (Viterbi) that minimizes the
+  *total* travel; it may take a locally longer hop to avoid a bigger jump later.
+- **Lowest fret** — the simple rule: each note independently prefers low frets.
+
+In all modes, chord notes cluster around one hand position (highest pitch
 assigned first, one string per note), and the song's first note — which has no
-previous position — simply prefers a low fret. All the alternative positions
-can still be shown by unchecking "Single key per note".
+previous position — prefers a low fret. All the alternative positions can
+still be shown by unchecking "Single key per note".
 
 If positions don't line up with your instrument, edit the **Tuning** row to
 match how your Z6 is actually configured.

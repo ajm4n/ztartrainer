@@ -195,6 +195,13 @@
     <label class="ctl"><input id="metronome" type="checkbox"> Click on each step</label>
     <label class="ctl"><input id="soundOn" type="checkbox" checked> Sound</label>
     <label class="ctl"><input id="oneKey" type="checkbox" checked> Single key per note (hide duplicates)</label>
+    <label class="ctl">Fingering
+      <select id="fingerMode">
+        <option value="greedy" selected>Nearest key (least distance each move)</option>
+        <option value="optimal">Optimal path (least total travel)</option>
+        <option value="lowfret">Lowest fret</option>
+      </select>
+    </label>
   </div>
 
   <div class="progress" id="progressWrap" style="display:none"><i id="progress"></i></div>
@@ -414,7 +421,7 @@ const State = {
   song:null, steps:[], stepIdx:-1,
   tuning:[28,33,38,43,47,52], // Z6 default: standard guitar one octave down (E1 A1 D2 G2 B2 E3)
   frets:24, transpose:0, showNames:false,
-  playing:false, startClock:0, startSongTime:0, raf:0, speed:1,
+  playing:false, startClock:0, startSongTime:0, raf:0, speed:1, fingerMode:"greedy",
 };
 const STD_TUNING = [40,45,50,55,59,64];        // standard concert guitar E A D G B E
 const Z6_TUNING  = [28,33,38,43,47,52];        // standard, one octave down (matches the Z6)
@@ -422,7 +429,7 @@ const Z6_TUNING  = [28,33,38,43,47,52];        // standard, one octave down (mat
 const els = {};
 ["drop","file","meta","m-name","m-notes","m-steps","m-dur","m-tracks","m-tempo",
  "controls","playBtn","prevBtn","nextBtn","restartBtn","speed","speedVal","stepMode",
- "metronome","soundOn","oneKey","progressWrap","progress","boardWrap","board","stepStrip",
+ "metronome","soundOn","oneKey","fingerMode","progressWrap","progress","boardWrap","board","stepStrip",
  "tuning","frets","transpose","presetStd","presetZ6","showNames","pasteBox","pasteBpm","pasteBtn"].forEach(id=>{
   els[id.replace(/-/g,"_")] = document.getElementById(id);
 });
@@ -512,21 +519,48 @@ function positionsForPitch(midi){
   return out;
 }
 
-/* Precompute fingering for the whole song: every note takes the position with
-   the least physical finger distance from where the hand currently is.
+/* ---- Fingering strategies ----
    Distance uses real neck geometry — one fret of travel ≈ three string
-   crossings. Chord notes cluster around the chord's first pick. The only
-   exception is the song's first note, which has no previous position and
-   simply prefers a low fret. */
+   crossings. Chord notes are assigned highest-pitch-first (fewest options)
+   and cluster around the chord's anchor, one string per note. */
 const FRET_SPAN = 3;                                // fret spacing ≈ 3× string spacing
 function fingerDist(a, b){ return Math.hypot((a.f-b.f)*FRET_SPAN, a.s-b.s); }
-function computeFingering(steps){
-  let hand = null;                                  // {f,s} where the hand currently sits
-  const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
+const avgOf = a => a.reduce((x,y)=>x+y,0)/a.length;
+function handPoint(picks){ return {f:avgOf(picks.map(p=>p.f)), s:avgOf(picks.map(p=>p.s))}; }
+
+/* build one chord shape clustered around a given anchor position */
+function shapeFromAnchor(notes, anchor){
+  const used = new Set([anchor.s]);
+  const picks = [{s:anchor.s, f:anchor.f, note:notes[0].note}];
+  for(let i=1; i<notes.length; i++){
+    let cands = positionsForPitch(notes[i].note).filter(c=> !used.has(c.s));
+    if(!cands.length) cands = positionsForPitch(notes[i].note);
+    if(!cands.length) continue;
+    let best=null, bc=Infinity;
+    for(const c of cands){ const d = fingerDist(c, picks[0]) + 0.001*c.f; if(d<bc){bc=d; best=c;} }
+    used.add(best.s);
+    picks.push({s:best.s, f:best.f, note:notes[i].note});
+  }
+  return picks;
+}
+/* all distinct playable shapes for a step (one per anchor position) */
+function candidateShapes(step){
+  const notes = step.notes.slice().sort((a,b)=>b.note-a.note);
+  if(!notes.length) return [];
+  const seen = new Set(), out = [];
+  for(const a of positionsForPitch(notes[0].note)){
+    const sh = shapeFromAnchor(notes, a);
+    const sig = sh.map(p=>p.s+":"+p.f).join(",");
+    if(!seen.has(sig)){ seen.add(sig); out.push(sh); }
+  }
+  return out;
+}
+
+/* greedy: every note takes the least finger distance from the current hand */
+function computeFingeringGreedy(steps){
+  let hand = null;
   return steps.map(step=>{
     const used = new Set(), picks = [];
-    // assign highest pitch first: it has the fewest possible positions, and the
-    // rest of the chord then walks down the strings into a playable shape
     const notes = step.notes.slice().sort((a,b)=>b.note-a.note);
     for(const n of notes){
       let cands = positionsForPitch(n.note).filter(c=> !used.has(c.s));
@@ -542,9 +576,61 @@ function computeFingering(steps){
       used.add(best.s);
       picks.push({s:best.s, f:best.f, note:n.note});
     }
-    if(picks.length) hand = {f:avg(picks.map(p=>p.f)), s:avg(picks.map(p=>p.s))};
+    if(picks.length) hand = handPoint(picks);
     return picks;
   });
+}
+
+/* optimal: Viterbi over candidate shapes, minimizing total travel for the song */
+function computeFingeringOptimal(steps){
+  const result = steps.map(()=>[]);
+  const items = [];
+  steps.forEach((st,i)=>{ const sh = candidateShapes(st); if(sh.length) items.push({i, sh}); });
+  if(!items.length) return result;
+  let prev = null;
+  for(const it of items){
+    it.states = it.sh.map(sh=>({sh, hp:handPoint(sh), cost:Infinity, bk:-1}));
+    if(!prev){
+      it.states.forEach(s=>{ s.cost = s.hp.f + 0.1*Math.abs(s.hp.s-2.5); });
+    } else {
+      it.states.forEach(s=>{
+        prev.states.forEach((ps,j)=>{
+          const c = ps.cost + fingerDist(s.hp, ps.hp) + 0.001*s.hp.f;
+          if(c < s.cost){ s.cost = c; s.bk = j; }
+        });
+      });
+    }
+    it.prev = prev; prev = it;
+  }
+  let it = items[items.length-1];
+  let j = it.states.reduce((b,s,k,a)=> s.cost<a[b].cost?k:b, 0);
+  while(it){ result[it.i] = it.states[j].sh; j = it.states[j].bk; it = it.prev; }
+  return result;
+}
+
+/* lowest fret: the simple rule — each step independently picks low frets */
+function computeFingeringLowFret(steps){
+  return steps.map(step=>{
+    const used = new Set(), picks = [];
+    const notes = step.notes.slice().sort((a,b)=>b.note-a.note);
+    for(const n of notes){
+      let cands = positionsForPitch(n.note).filter(c=> !used.has(c.s));
+      if(!cands.length) cands = positionsForPitch(n.note);
+      if(!cands.length) continue;
+      let best=null, bc=Infinity;
+      for(const c of cands){ const cost = c.f + 0.1*Math.abs(c.s-2.5); if(cost<bc){bc=cost; best=c;} }
+      used.add(best.s);
+      picks.push({s:best.s, f:best.f, note:n.note});
+    }
+    return picks;
+  });
+}
+
+function computeFingering(steps){
+  const mode = State.fingerMode || "greedy";
+  if(mode==="optimal") return computeFingeringOptimal(steps);
+  if(mode==="lowfret") return computeFingeringLowFret(steps);
+  return computeFingeringGreedy(steps);
 }
 
 function clearBoard(){
@@ -823,6 +909,13 @@ els.presetStd.onclick=()=>{ State.tuning=STD_TUNING.slice(); renderTuningUI(); i
 els.presetZ6.onclick=()=>{ State.tuning=Z6_TUNING.slice(); renderTuningUI(); if(State.song){renderBoard(); if(State.stepIdx>=0)showStep(State.stepIdx,true);} };
 els.showNames.onclick=()=>{ State.showNames=!State.showNames; els.board.classList.toggle("names", State.showNames); };
 els.oneKey.onchange=()=>{ if(State.stepIdx>=0) showStep(State.stepIdx, true); };
+els.fingerMode.onchange=()=>{
+  State.fingerMode = els.fingerMode.value;
+  if(State.song && State.steps.length){
+    State.fingering = computeFingering(State.steps);
+    if(State.stepIdx>=0) showStep(State.stepIdx, true);
+  }
+};
 
 // tap any key to hear it (like pressing it on the Z6)
 els.board.addEventListener("pointerdown", e=>{
