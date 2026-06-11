@@ -512,10 +512,14 @@ function positionsForPitch(midi){
   return out;
 }
 
-/* Precompute a travel-aware fingering for the whole song: each note picks the
-   position closest to the current hand position (fret moves cost more than
-   string crossings), chord notes cluster around the chord's first pick, and
-   the very first pick just prefers a low fret. */
+/* Precompute fingering for the whole song: every note takes the position with
+   the least physical finger distance from where the hand currently is.
+   Distance uses real neck geometry — one fret of travel ≈ three string
+   crossings. Chord notes cluster around the chord's first pick. The only
+   exception is the song's first note, which has no previous position and
+   simply prefers a low fret. */
+const FRET_SPAN = 3;                                // fret spacing ≈ 3× string spacing
+function fingerDist(a, b){ return Math.hypot((a.f-b.f)*FRET_SPAN, a.s-b.s); }
 function computeFingering(steps){
   let hand = null;                                  // {f,s} where the hand currently sits
   const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
@@ -531,9 +535,8 @@ function computeFingering(steps){
       const ref = picks.length ? picks[0] : hand;   // cluster chords; else follow the hand
       let best = null, bestCost = Infinity;
       for(const c of cands){
-        const cost = ref==null
-          ? c.f + 0.1*Math.abs(c.s-2.5)
-          : 2*Math.abs(c.f-ref.f) + 0.7*Math.abs(c.s-ref.s) + 0.02*c.f;
+        const cost = (ref==null ? c.f + 0.1*Math.abs(c.s-2.5) : fingerDist(c, ref))
+                     + 0.001*c.f;                   // deterministic tie-break only
         if(cost < bestCost){ bestCost = cost; best = c; }
       }
       used.add(best.s);
