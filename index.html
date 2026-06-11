@@ -210,7 +210,7 @@
     <div class="board" id="board"></div>
     <div class="legend">
       <span><i style="background:var(--hit)"></i>now playing</span>
-      <span><i style="background:var(--rec)"></i>suggested fingering</span>
+      <span><i style="background:var(--rec)"></i>next up (suggested fingering)</span>
       <span><i style="background:var(--candidate)"></i>other valid positions</span>
     </div>
   </div>
@@ -241,8 +241,8 @@
 
 <footer>
   Tip: turn on <b>Step mode</b> to advance one note/chord at a time with <code>Next</code> /
-  <code>Prev</code> (or arrow keys). The orange dot is a suggested place to play each pitch; greyed dots
-  are the other strings/frets that produce the same note on your Z6.
+  <code>Prev</code> (or arrow keys). Green keys are what's playing now, orange keys are where your
+  fingers go next, and blue keys are the other places that produce the same note on your Z6.
 </footer>
 
 <script>
@@ -446,7 +446,10 @@ function renderBoard(){
 
   // The Z6 is an electronic key matrix, not a vibrating-string scale: every fret
   // key is the same size (uniform grid of long, narrow buttons).
-  const KEYW = 56, GUT = 58, GAP = 3;       // key width + gutter + spacing (match CSS)
+  // Size keys to fit the container so the whole neck is visible without scrolling.
+  const GUT = 58, GAP = 3;                  // gutter + spacing (match CSS)
+  const avail = (els.boardWrap.clientWidth || 1400) - 30;   // board padding/border
+  const KEYW = Math.max(24, Math.floor((avail - GUT - (F+1)*GAP) / F));
   const cg = document.createElement("colgroup");
   const c0 = document.createElement("col"); c0.style.width = GUT+"px"; cg.appendChild(c0);
   for(let f=1; f<=F; f++){ const c=document.createElement("col"); c.style.width = KEYW+"px"; cg.appendChild(c); }
@@ -468,7 +471,8 @@ function renderBoard(){
     const tr = document.createElement("tr");
     const lbl = document.createElement("td");
     lbl.className="strLbl";
-    lbl.innerHTML = `<b>${midiToName(tun[s]).replace(/[0-9-]/g,"")}</b> <span style="opacity:.6">${midiToName(tun[s])}</span>`;
+    lbl.innerHTML = `<b>${s+1}</b> <span style="opacity:.6">${midiToName(tun[s])}</span>`;
+    lbl.title = "String "+(s+1)+" — open "+midiToName(tun[s]);
     tr.appendChild(lbl);
 
     for(let f=1; f<=F; f++){
@@ -502,7 +506,10 @@ function renderBoard(){
   els.board.appendChild(tbl);
   els.board.classList.toggle("names", State.showNames);
   // tuning/frets/transpose changed the geometry — refit the fingering
-  if(State.song && State.steps.length) State.fingering = computeFingering(State.steps);
+  if(State.song && State.steps.length){
+    State.fingering = computeFingering(State.steps);
+    renderStepStrip(); markStepStrip();
+  }
 }
 
 /* find all key positions for a pitch (DOM cells) */
@@ -637,8 +644,9 @@ function clearBoard(){
   els.board.querySelectorAll(".cell").forEach(c=> c.classList.remove("hit","rec","candidate"));
 }
 
-/* highlight a step: hit/rec on the precomputed fingering, candidate on the rest */
-function showStep(idx, withHit=false){
+/* highlight a step: green = current keys, orange = the next step's suggested
+   keys (where the fingers go next), blue = alternate positions */
+function showStep(idx, withHit=true){
   clearBoard();
   const step = State.steps[idx];
   if(!step) return;
@@ -648,7 +656,12 @@ function showStep(idx, withHit=false){
   const picks = (State.fingering && State.fingering[idx]) || [];
   for(const p of picks){
     const cell = els.board.querySelector(`.cell[data-string="${p.s}"][data-fret="${p.f}"]`);
-    if(cell){ cell.classList.remove("candidate"); cell.classList.add(withHit?"hit":"rec"); }
+    if(cell){ cell.classList.remove("candidate"); cell.classList.add("hit"); }
+  }
+  const next = (State.fingering && State.fingering[idx+1]) || [];
+  for(const p of next){
+    const cell = els.board.querySelector(`.cell[data-string="${p.s}"][data-fret="${p.f}"]`);
+    if(cell && !cell.classList.contains("hit")){ cell.classList.remove("candidate"); cell.classList.add("rec"); }
   }
 }
 
@@ -657,8 +670,11 @@ function renderStepStrip(){
   els.stepStrip.innerHTML="";
   State.steps.forEach((st,i)=>{
     const d=document.createElement("div"); d.className="step"; d.dataset.i=i;
+    const picks = (State.fingering && State.fingering[i]) || [];
+    const sf = picks.length ? picks.map(p=>`S${p.s+1}·F${p.f}`).join(" ") : "—";
     const names = st.notes.map(n=>midiToName(n.note)).join(" ");
-    d.innerHTML = `<span class="nm">${i+1}</span><span class="t">${names}</span><span class="t">${st.start.toFixed(2)}s</span>`;
+    d.title = "string · fret (string 1 = top row)";
+    d.innerHTML = `<span class="nm">${sf}</span><span class="t">${names}</span><span class="t">${st.start.toFixed(2)}s</span>`;
     d.onclick=()=> gotoStep(i, true);
     els.stepStrip.appendChild(d);
   });
@@ -913,6 +929,7 @@ els.fingerMode.onchange=()=>{
   State.fingerMode = els.fingerMode.value;
   if(State.song && State.steps.length){
     State.fingering = computeFingering(State.steps);
+    renderStepStrip(); markStepStrip();
     if(State.stepIdx>=0) showStep(State.stepIdx, true);
   }
 };
@@ -936,8 +953,20 @@ document.addEventListener("keydown", e=>{
 
 renderTuningUI();
 // show the neck right away so keys can be explored before loading a song
-renderBoard();
+// (visible first, so renderBoard can measure the container width)
 els.boardWrap.style.display="block";
+renderBoard();
+
+// refit the board when the window size changes
+let resizeTO;
+window.addEventListener("resize", ()=>{
+  clearTimeout(resizeTO);
+  resizeTO = setTimeout(()=>{
+    renderBoard();
+    if(State.song){ renderStepStrip(); markStepStrip(); }
+    if(State.stepIdx>=0) showStep(State.stepIdx, true);
+  }, 150);
+});
 </script>
 </body>
 </html>
